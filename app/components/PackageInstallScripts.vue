@@ -69,7 +69,7 @@ const isExpanded = shallowRef(false)
           class="flex items-center justify-between py-0.5 text-sm gap-2"
         >
           <NuxtLink
-            :to="{ name: 'package', params: getPackagePageParams(dep) }"
+            :to="getPackageRoute(dep)"
             class="font-mono text-fg-muted hover:text-fg transition-colors duration-200 truncate min-w-0"
           >
             {{ dep }}

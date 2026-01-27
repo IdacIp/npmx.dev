@@ -8,25 +8,11 @@ import { areUrlsEquivalent } from '#shared/utils/url'
 
 definePageMeta({
   name: 'package',
-  /**
-   * Supported patterns:
-   *   /nuxt → packageName: "nuxt", requestedVersion: null
-   *   /nuxt/v/4.2.0 → packageName: "nuxt", requestedVersion: "4.2.0"
-   *   /@nuxt/kit → packageName: "@nuxt/kit", requestedVersion: null
-   *   /@nuxt/kit/v/1.0.0 → packageName: "@nuxt/kit", requestedVersion: "1.0.0"
-   *   /axios@1.13.3 → packageName: "axios", requestedVersion: "1.13.3"
-   *   /@nuxt/kit@1.0.0 → packageName: "@nuxt/kit", requestedVersion: "1.0.0"
-   */
-  path: '/:org(@[^/]+/)?:name([^@/]+):version()?',
-  alias: [
-    '/:org(@[^/]+/)?:name([^@/]+)/v/:version()?',
-    '/package/:org(@[^/]+/)?:name([^@/]+):version()?',
-    '/package/:org(@[^/]+/)?:name([^@/]+)/v/:version()?',
-  ],
 })
 
-const route = useRoute('package')
-
+// the syntax for matching is complex, so we implement in modules/routing.ts
+// which injects a second identical route with required versions
+const route = useRoute('package-version')
 const router = useRouter()
 
 const orgName = computed(() => route.params.org)

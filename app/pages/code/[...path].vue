@@ -220,10 +220,7 @@ const orgName = computed(() => {
 
 // Build route object for package link (with optional version)
 function packageRoute(ver?: string | null) {
-  return {
-    name: 'package' as const,
-    params: getPackagePageParams(packageName.value, ver),
-  }
+  return getPackageRoute(packageName.value, ver)
 }
 
 // Format file size

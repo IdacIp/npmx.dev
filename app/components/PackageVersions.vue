@@ -38,10 +38,7 @@ function hasProvenance(version: PackumentVersion | undefined): boolean {
 
 // Build route object for package version link
 function versionRoute(version: string): RouteLocationRaw {
-  return {
-    name: 'package',
-    params: getPackagePageParams(props.packageName, version),
-  }
+  return getPackageRoute(props.packageName, version)
 }
 
 // Version to tags lookup (supports multiple tags per version)

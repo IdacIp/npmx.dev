@@ -59,7 +59,7 @@ const sortedOptionalDependencies = computed(() => {
           class="flex items-center justify-between py-1 text-sm gap-2"
         >
           <NuxtLink
-            :to="{ name: 'package', params: getPackagePageParams(dep) }"
+            :to="getPackageRoute(dep)"
             class="font-mono text-fg-muted hover:text-fg transition-colors duration-200 truncate min-w-0"
           >
             {{ dep }}
@@ -75,7 +75,7 @@ const sortedOptionalDependencies = computed(() => {
               <span class="i-carbon-warning-alt w-3 h-3 block" />
             </span>
             <NuxtLink
-              :to="{ name: 'package', params: getPackagePageParams(dep, version) }"
+              :to="getPackageRoute(dep, version)"
               class="font-mono text-xs text-right truncate"
               :class="getVersionClass(outdatedDeps[dep])"
               :title="outdatedDeps[dep] ? getOutdatedTooltip(outdatedDeps[dep]) : version"
@@ -114,7 +114,7 @@ const sortedOptionalDependencies = computed(() => {
         >
           <div class="flex items-center gap-2 min-w-0">
             <NuxtLink
-              :to="{ name: 'package', params: getPackagePageParams(peer.name) }"
+              :to="getPackageRoute(peer.name)"
               class="font-mono text-fg-muted hover:text-fg transition-colors duration-200 truncate"
             >
               {{ peer.name }}
@@ -128,10 +128,7 @@ const sortedOptionalDependencies = computed(() => {
             </span>
           </div>
           <NuxtLink
-            :to="{
-              name: 'package',
-              params: getPackagePageParams(peer.name, peer.version),
-            }"
+            :to="getPackageRoute(peer.name, peer.version)"
             class="font-mono text-xs text-fg-subtle max-w-[40%] text-right truncate"
             :title="peer.version"
           >
@@ -170,13 +167,13 @@ const sortedOptionalDependencies = computed(() => {
           class="flex items-center justify-between py-1 text-sm gap-2"
         >
           <NuxtLink
-            :to="{ name: 'package', params: getPackagePageParams(dep) }"
+            :to="getPackageRoute(dep)"
             class="font-mono text-fg-muted hover:text-fg transition-colors duration-200 truncate min-w-0"
           >
             {{ dep }}
           </NuxtLink>
           <NuxtLink
-            :to="{ name: 'package', params: getPackagePageParams(dep, version) }"
+            :to="getPackageRoute(dep, version)"
             class="font-mono text-xs text-fg-subtle max-w-[50%] text-right truncate"
             :title="version"
           >
