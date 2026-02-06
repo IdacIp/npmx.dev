@@ -119,7 +119,7 @@ function mergeDailyPoints(
     .map(([day, downloads]) => ({ day, downloads }))
 }
 
-function buildDailyEvolutionFromDaily(
+export function buildDailyEvolutionFromDaily(
   daily: Array<{ day: string; downloads: number }>,
 ): Array<{ day: string; downloads: number; timestamp: number }> {
   return daily
@@ -133,7 +133,7 @@ function buildDailyEvolutionFromDaily(
     })
 }
 
-function buildRollingWeeklyEvolutionFromDaily(
+export function buildRollingWeeklyEvolutionFromDaily(
   daily: Array<{ day: string; downloads: number }>,
   rangeStartIso: string,
   rangeEndIso: string,
@@ -180,7 +180,7 @@ function buildRollingWeeklyEvolutionFromDaily(
     })
 }
 
-function buildMonthlyEvolutionFromDaily(
+export function buildMonthlyEvolutionFromDaily(
   daily: Array<{ day: string; downloads: number }>,
 ): Array<{ month: string; downloads: number; timestamp: number }> {
   const sorted = daily.slice().sort((a, b) => a.day.localeCompare(b.day))
@@ -200,7 +200,7 @@ function buildMonthlyEvolutionFromDaily(
     })
 }
 
-function buildYearlyEvolutionFromDaily(
+export function buildYearlyEvolutionFromDaily(
   daily: Array<{ day: string; downloads: number }>,
 ): Array<{ year: string; downloads: number; timestamp: number }> {
   const sorted = daily.slice().sort((a, b) => a.day.localeCompare(b.day))
@@ -220,22 +220,22 @@ function buildYearlyEvolutionFromDaily(
     })
 }
 
-function getClientDailyRangePromiseCache() {
+function getClientPromiseCache<T>(key: string): Map<string, Promise<T>> | null {
   if (!import.meta.client) return null
 
-  const globalScope = globalThis as unknown as {
-    __npmDailyRangePromiseCache?: Map<string, Promise<Array<{ day: string; downloads: number }>>>
+  const globalScope = globalThis as unknown as Record<string, Map<string, Promise<T>> | undefined>
+
+  if (!globalScope[key]) {
+    globalScope[key] = new Map()
   }
 
-  if (!globalScope.__npmDailyRangePromiseCache) {
-    globalScope.__npmDailyRangePromiseCache = new Map()
-  }
-
-  return globalScope.__npmDailyRangePromiseCache
+  return globalScope[key]
 }
 
 async function fetchDailyRangeCached(packageName: string, startIso: string, endIso: string) {
-  const cache = getClientDailyRangePromiseCache()
+  const cache = getClientPromiseCache<Array<{ day: string; downloads: number }>>(
+    '__npmDailyRangePromiseCache',
+  )
 
   if (!cache) {
     const response = await fetchNpmDownloadsRange(packageName, startIso, endIso)
@@ -288,7 +288,7 @@ function toDateOnly(value?: string): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly : null
 }
 
-function getNpmPackageCreationDate(packument: PackumentLikeForTime): string | null {
+export function getNpmPackageCreationDate(packument: PackumentLikeForTime): string | null {
   const time = packument.time
   if (!time) return null
   if (time.created) return time.created
@@ -376,8 +376,61 @@ export function useCharts() {
     return buildYearlyEvolutionFromDaily(sortedDaily)
   }
 
+  async function fetchPackageLikesEvolution(
+    packageName: MaybeRefOrGetter<string>,
+    downloadEvolutionOptions: MaybeRefOrGetter<PackageDownloadEvolutionOptions>,
+  ): Promise<
+    DailyDownloadPoint[] | WeeklyDownloadPoint[] | MonthlyDownloadPoint[] | YearlyDownloadPoint[]
+  > {
+    const resolvedPackageName = toValue(packageName)
+    const resolvedOptions = toValue(downloadEvolutionOptions)
+
+    // Fetch daily likes data (with client-side promise caching)
+    const cache = getClientPromiseCache<Array<{ day: string; downloads: number }>>(
+      '__likesEvolutionPromiseCache',
+    )
+    const cacheKey = resolvedPackageName
+
+    let dailyLikesPromise: Promise<Array<{ day: string; downloads: number }>>
+
+    if (cache?.has(cacheKey)) {
+      dailyLikesPromise = cache.get(cacheKey)!
+    } else {
+      dailyLikesPromise = $fetch<Array<{ day: string; likes: number }>>(
+        `/api/social/likes-evolution/${resolvedPackageName}`,
+      )
+        .then(data =>
+          // Map likes → downloads to reuse existing aggregation functions
+          (data ?? []).map(d => ({ day: d.day, downloads: d.likes })),
+        )
+        .catch(error => {
+          cache?.delete(cacheKey)
+          throw error
+        })
+
+      cache?.set(cacheKey, dailyLikesPromise)
+    }
+
+    const sortedDaily = await dailyLikesPromise
+
+    // Use resolveDateRange to determine the date window, then filter daily data
+    const { start, end } = resolveDateRange(resolvedOptions, null)
+    const startIso = toIsoDateString(start)
+    const endIso = toIsoDateString(end)
+
+    const filteredDaily = sortedDaily.filter(d => d.day >= startIso && d.day <= endIso)
+
+    if (resolvedOptions.granularity === 'day') return buildDailyEvolutionFromDaily(filteredDaily)
+    if (resolvedOptions.granularity === 'week')
+      return buildRollingWeeklyEvolutionFromDaily(filteredDaily, startIso, endIso)
+    if (resolvedOptions.granularity === 'month')
+      return buildMonthlyEvolutionFromDaily(filteredDaily)
+    return buildYearlyEvolutionFromDaily(filteredDaily)
+  }
+
   return {
     fetchPackageDownloadEvolution,
+    fetchPackageLikesEvolution,
     getNpmPackageCreationDate,
   }
 }

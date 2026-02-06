@@ -23,6 +23,12 @@ const props = defineProps<{
    */
   packageNames?: string[]
   createdIso?: string | null
+
+  /**
+   * When true, shows metric selector (Downloads / Likes).
+   * Only used on the compare page.
+   */
+  showMetricSelector?: boolean
 }>()
 
 const { locale } = useI18n()
@@ -51,7 +57,7 @@ onMounted(async () => {
   await nextTick()
   isMounted.value = true
 
-  loadNow()
+  loadMetric(selectedMetric.value)
 })
 
 const { colors } = useCssVariables(
@@ -261,16 +267,28 @@ function extractSeriesPoints(
   dataset: EvolutionData,
 ): Array<{ timestamp: number; downloads: number }> {
   if (selectedGranularity === 'weekly' && isWeeklyDataset(dataset)) {
-    return dataset.map(d => ({ timestamp: d.timestampEnd, downloads: d.downloads }))
+    return dataset.map(d => ({
+      timestamp: d.timestampEnd,
+      downloads: d.downloads,
+    }))
   }
   if (selectedGranularity === 'daily' && isDailyDataset(dataset)) {
-    return dataset.map(d => ({ timestamp: d.timestamp, downloads: d.downloads }))
+    return dataset.map(d => ({
+      timestamp: d.timestamp,
+      downloads: d.downloads,
+    }))
   }
   if (selectedGranularity === 'monthly' && isMonthlyDataset(dataset)) {
-    return dataset.map(d => ({ timestamp: d.timestamp, downloads: d.downloads }))
+    return dataset.map(d => ({
+      timestamp: d.timestamp,
+      downloads: d.downloads,
+    }))
   }
   if (selectedGranularity === 'yearly' && isYearlyDataset(dataset)) {
-    return dataset.map(d => ({ timestamp: d.timestamp, downloads: d.downloads }))
+    return dataset.map(d => ({
+      timestamp: d.timestamp,
+      downloads: d.downloads,
+    }))
   }
   return []
 }
@@ -493,7 +511,12 @@ function resetDateRange() {
 const options = shallowRef<
   | { granularity: 'day'; startDate?: string; endDate?: string }
   | { granularity: 'week'; weeks: number; startDate?: string; endDate?: string }
-  | { granularity: 'month'; months: number; startDate?: string; endDate?: string }
+  | {
+      granularity: 'month'
+      months: number
+      startDate?: string
+      endDate?: string
+    }
   | { granularity: 'year'; startDate?: string; endDate?: string }
 >({ granularity: 'week', weeks: 52 })
 
@@ -538,14 +561,63 @@ function applyDateRange<T extends Record<string, unknown>>(base: T): T & DateRan
   return next
 }
 
-const { fetchPackageDownloadEvolution } = useCharts()
+const { fetchPackageDownloadEvolution, fetchPackageLikesEvolution } = useCharts()
 
-const evolution = shallowRef<EvolutionData>(props.weeklyDownloads ?? [])
-const evolutionsByPackage = shallowRef<Record<string, EvolutionData>>({})
-const pending = shallowRef(false)
+type MetricId = 'downloads' | 'likes'
+
+type MetricDef = {
+  id: MetricId
+  label: string
+  fetch: (pkg: string, options: PackageDownloadEvolutionOptions) => Promise<EvolutionData>
+}
+
+const METRICS = computed<MetricDef[]>(() => [
+  {
+    id: 'downloads',
+    label: $t('compare.facets.trends.items.downloads'),
+    fetch: (pkg, opts) =>
+      fetchPackageDownloadEvolution(pkg, props.createdIso ?? null, opts) as Promise<EvolutionData>,
+  },
+  {
+    id: 'likes',
+    label: $t('compare.facets.trends.items.likes'),
+    fetch: (pkg, opts) => fetchPackageLikesEvolution(pkg, opts) as Promise<EvolutionData>,
+  },
+])
+
+const selectedMetric = shallowRef<MetricId>('downloads')
+
+// Per-metric state keyed by metric id
+const metricStates = reactive<
+  Record<
+    MetricId,
+    {
+      pending: boolean
+      evolution: EvolutionData
+      evolutionsByPackage: Record<string, EvolutionData>
+      requestToken: number
+    }
+  >
+>({
+  downloads: {
+    pending: false,
+    evolution: props.weeklyDownloads ?? [],
+    evolutionsByPackage: {},
+    requestToken: 0,
+  },
+  likes: {
+    pending: false,
+    evolution: [],
+    evolutionsByPackage: {},
+    requestToken: 0,
+  },
+})
+
+const activeMetricState = computed(() => metricStates[selectedMetric.value])
+const activeMetricDef = computed(() => METRICS.value.find(m => m.id === selectedMetric.value)!)
+const pending = computed(() => activeMetricState.value.pending)
 
 const isMounted = shallowRef(false)
-let requestToken = 0
 
 // Watches granularity and date inputs to keep request options in sync and
 // manage the loading state.
@@ -572,7 +644,7 @@ watch(
 
     const packageNames = effectivePackageNames.value
     if (!import.meta.client || !packageNames.length) {
-      pending.value = false
+      activeMetricState.value.pending = false
       return
     }
 
@@ -581,22 +653,23 @@ watch(
 
     // Do not show loading when weeklyDownloads is already provided
     if (
+      selectedMetric.value === 'downloads' &&
       !isMultiPackageMode.value &&
       o.granularity === 'week' &&
       props.weeklyDownloads?.length &&
       !hasExplicitRange
     ) {
-      pending.value = false
+      activeMetricState.value.pending = false
       return
     }
 
-    pending.value = true
+    activeMetricState.value.pending = true
   },
   { immediate: true },
 )
 
 /**
- * Fetches download evolution data based on the current granularity,
+ * Fetches evolution data for a given metric based on the current granularity,
  * date range, and package selection.
  *
  * This function:
@@ -604,76 +677,71 @@ watch(
  * - supports both single-package and multi-package modes
  * - applies request de-duplication via a request token to avoid race conditions
  * - updates the appropriate reactive stores with fetched data
- * - manages the `pending` loading state
- *
- * Behavior details:
- * - In multi-package mode, all packages are fetched in parallel and partial
- *   failures are tolerated using `Promise.allSettled`
- * - In single-package mode, weekly data is reused from `weeklyDownloads`
- *   when available and no explicit date range is requested
- * - Outdated responses are discarded when a newer request supersedes them
- *
+ * - manages the metric's `pending` loading state
  */
-async function loadNow() {
+async function loadMetric(metricId: MetricId) {
   if (!import.meta.client) return
 
   const packageNames = effectivePackageNames.value
   if (!packageNames.length) return
 
-  const currentToken = ++requestToken
-  pending.value = true
+  const state = metricStates[metricId]
+  const metric = METRICS.value.find(m => m.id === metricId)!
+  const currentToken = ++state.requestToken
+  state.pending = true
+
+  const fetchFn = (pkg: string) => metric.fetch(pkg, options.value)
 
   try {
     if (isMultiPackageMode.value) {
       const settled = await Promise.allSettled(
         packageNames.map(async pkg => {
-          const result = await fetchPackageDownloadEvolution(
-            pkg,
-            props.createdIso ?? null,
-            options.value,
-          )
+          const result = await fetchFn(pkg)
           return { pkg, result: (result ?? []) as EvolutionData }
         }),
       )
 
-      if (currentToken !== requestToken) return
+      if (currentToken !== state.requestToken) return
 
       const next: Record<string, EvolutionData> = {}
       for (const entry of settled) {
         if (entry.status === 'fulfilled') next[entry.value.pkg] = entry.value.result
       }
 
-      evolutionsByPackage.value = next
+      state.evolutionsByPackage = next
       displayedGranularity.value = selectedGranularity.value
       return
     }
 
     const pkg = packageNames[0] ?? ''
     if (!pkg) {
-      evolution.value = []
+      state.evolution = []
       displayedGranularity.value = selectedGranularity.value
       return
     }
 
-    const o = options.value
-    const hasExplicitRange = Boolean((o as any).startDate || (o as any).endDate)
-    if (o.granularity === 'week' && props.weeklyDownloads?.length && !hasExplicitRange) {
-      evolution.value = props.weeklyDownloads
-      displayedGranularity.value = 'weekly'
-      return
+    // Reuse provided weeklyDownloads for downloads metric when applicable
+    if (metricId === 'downloads') {
+      const o = options.value
+      const hasExplicitRange = Boolean((o as any).startDate || (o as any).endDate)
+      if (o.granularity === 'week' && props.weeklyDownloads?.length && !hasExplicitRange) {
+        state.evolution = props.weeklyDownloads
+        displayedGranularity.value = 'weekly'
+        return
+      }
     }
 
-    const result = await fetchPackageDownloadEvolution(pkg, props.createdIso ?? null, options.value)
-    if (currentToken !== requestToken) return
+    const result = await fetchFn(pkg)
+    if (currentToken !== state.requestToken) return
 
-    evolution.value = (result ?? []) as EvolutionData
+    state.evolution = (result ?? []) as EvolutionData
     displayedGranularity.value = selectedGranularity.value
   } catch {
-    if (currentToken !== requestToken) return
-    if (isMultiPackageMode.value) evolutionsByPackage.value = {}
-    else evolution.value = []
+    if (currentToken !== state.requestToken) return
+    if (isMultiPackageMode.value) state.evolutionsByPackage = {}
+    else state.evolution = []
   } finally {
-    if (currentToken === requestToken) pending.value = false
+    if (currentToken === state.requestToken) state.pending = false
   }
 }
 
@@ -685,7 +753,7 @@ async function loadNow() {
 // - prevents unnecessary API load and visual flicker of the loading state
 //
 const debouncedLoadNow = useDebounceFn(() => {
-  loadNow()
+  loadMetric(selectedMetric.value)
 }, 1000)
 
 const fetchTriggerKey = computed(() => {
@@ -714,41 +782,35 @@ watch(
 )
 
 const effectiveDataSingle = computed<EvolutionData>(() => {
-  if (displayedGranularity.value === 'weekly' && props.weeklyDownloads?.length) {
-    if (isWeeklyDataset(evolution.value) && evolution.value.length) return evolution.value
+  const state = activeMetricState.value
+  if (
+    selectedMetric.value === 'downloads' &&
+    displayedGranularity.value === 'weekly' &&
+    props.weeklyDownloads?.length
+  ) {
+    if (isWeeklyDataset(state.evolution) && state.evolution.length) return state.evolution
     return props.weeklyDownloads
   }
-  return evolution.value
+  return state.evolution
 })
 
 /**
- * Normalized chart data derived from the fetched evolution datasets.
+ * Normalized chart data derived from the active metric's evolution datasets.
  *
- * This computed value adapts its behavior based on the current mode:
- *
- * - **Single-package mode**
- *   - Delegates formatting to `formatXyDataset`
- *   - Produces a single series with its corresponding timestamps
- *
- * - **Multi-package mode**
- *   - Merges multiple package datasets into a shared time axis
- *   - Aligns all series on the same sorted list of timestamps
- *   - Fills missing datapoints with `0` to keep series lengths consistent
- *   - Assigns framework-specific colors when applicable
- *
- * The returned structure matches the expectations of `VueUiXy`:
- * - `dataset`: array of series definitions, or `null` when no data is available
- * - `dates`: sorted list of timestamps used as the x-axis reference
- *
- * Returning `dataset: null` explicitly signals the absence of data and allows
- * the template to handle empty states without ambiguity.
+ * Adapts its behavior based on the current mode:
+ * - **Single-package mode**: formats via `formatXyDataset`
+ * - **Multi-package mode**: merges datasets into a shared time axis
  */
-const chartData = computed<{ dataset: VueUiXyDatasetItem[] | null; dates: number[] }>(() => {
+const chartData = computed<{
+  dataset: VueUiXyDatasetItem[] | null
+  dates: number[]
+}>(() => {
   if (!isMultiPackageMode.value) {
     const pkg = effectivePackageNames.value[0] ?? props.packageName ?? ''
     return formatXyDataset(displayedGranularity.value, effectiveDataSingle.value, pkg)
   }
 
+  const state = activeMetricState.value
   const names = effectivePackageNames.value
   const granularity = displayedGranularity.value
 
@@ -756,7 +818,7 @@ const chartData = computed<{ dataset: VueUiXyDatasetItem[] | null; dates: number
   const pointsByPackage = new Map<string, Array<{ timestamp: number; downloads: number }>>()
 
   for (const pkg of names) {
-    const data = evolutionsByPackage.value[pkg] ?? []
+    const data = state.evolutionsByPackage[pkg] ?? []
     const points = extractSeriesPoints(granularity, data)
     pointsByPackage.set(pkg, points)
     for (const p of points) timestampSet.add(p.timestamp)
@@ -772,12 +834,15 @@ const chartData = computed<{ dataset: VueUiXyDatasetItem[] | null; dates: number
 
     const series = dates.map(t => map.get(t) ?? 0)
 
-    const item: VueUiXyDatasetItem = { name: pkg, type: 'line', series } as VueUiXyDatasetItem
+    const item: VueUiXyDatasetItem = {
+      name: pkg,
+      type: 'line',
+      series,
+    } as VueUiXyDatasetItem
 
     if (isListedFramework(pkg)) {
       item.color = getFrameworkColor(pkg)
     }
-    // Other packages default to built-in palette
     return item
   })
 
@@ -1319,7 +1384,13 @@ const chartConfig = computed(() => {
       backgroundColor: colors.value.bg,
       padding: { bottom: 36, right: 100 }, // padding right is set to leave space of last datapoint label(s)
       userOptions: {
-        buttons: { pdf: false, labels: false, fullscreen: false, table: false, tooltip: false },
+        buttons: {
+          pdf: false,
+          labels: false,
+          fullscreen: false,
+          table: false,
+          tooltip: false,
+        },
         buttonTitles: {
           csv: $t('package.trends.download_file', { fileType: 'CSV' }),
           img: $t('package.trends.download_file', { fileType: 'PNG' }),
@@ -1362,7 +1433,7 @@ const chartConfig = computed(() => {
           axis: {
             yLabel: $t('package.trends.y_axis_label', {
               granularity: getGranularityLabel(selectedGranularity.value),
-              facet: $t('package.trends.items.downloads'),
+              facet: activeMetricDef.value.label,
             }),
             xLabel: isMultiPackageMode.value ? '' : xAxisLabel.value, // for multiple series, names are displayed in the chart's legend
             yLabelOffsetX: 12,
@@ -1468,12 +1539,46 @@ const chartConfig = computed(() => {
     },
   }
 })
+
+// Trigger data loading when the metric is switched
+watch(selectedMetric, value => {
+  if (!isMounted.value) return
+  loadMetric(value)
+})
 </script>
 
 <template>
-  <div class="w-full relative" id="download-analytics" :aria-busy="pending ? 'true' : 'false'">
+  <div
+    class="w-full relative"
+    id="trends-chart"
+    :aria-busy="activeMetricState.pending ? 'true' : 'false'"
+  >
     <div class="w-full mb-4 flex flex-col gap-3">
       <div class="flex flex-col sm:flex-row gap-3 sm:gap-2 sm:items-end">
+        <div v-if="showMetricSelector" class="flex flex-col gap-1 sm:shrink-0">
+          <span class="text-3xs font-mono text-fg-subtle tracking-wide uppercase">
+            {{ $t('package.trends.facet') }}
+          </span>
+          <div
+            class="flex items-center bg-bg-subtle border border-border rounded-md overflow-hidden"
+          >
+            <button
+              v-for="metric in METRICS"
+              :key="metric.id"
+              type="button"
+              class="px-2.5 py-1.75 font-mono text-sm transition-colors"
+              :class="
+                selectedMetric === metric.id
+                  ? 'text-fg bg-bg-elevated'
+                  : 'text-fg-subtle hover:text-fg'
+              "
+              @click="selectedMetric = metric.id"
+            >
+              {{ metric.label }}
+            </button>
+          </div>
+        </div>
+
         <div class="flex flex-col gap-1 sm:shrink-0">
           <label
             for="granularity"
@@ -1488,7 +1593,7 @@ const chartConfig = computed(() => {
             <select
               id="granularity"
               v-model="selectedGranularity"
-              :disabled="pending"
+              :disabled="activeMetricState.pending"
               class="w-full px-4 py-3 leading-none bg-bg-subtle font-mono text-sm text-fg outline-none appearance-none focus-visible:outline-accent/70"
             >
               <option value="daily">
@@ -1523,7 +1628,7 @@ const chartConfig = computed(() => {
               <InputBase
                 id="startDate"
                 v-model="startDate"
-                :disabled="pending"
+                :disabled="activeMetricState.pending"
                 type="date"
                 class="w-full min-w-0 bg-transparent ps-7"
                 size="medium"
@@ -1543,7 +1648,7 @@ const chartConfig = computed(() => {
               <InputBase
                 id="endDate"
                 v-model="endDate"
-                :disabled="pending"
+                :disabled="activeMetricState.pending"
                 type="date"
                 class="w-full min-w-0 bg-transparent ps-7"
                 size="medium"
@@ -1564,11 +1669,12 @@ const chartConfig = computed(() => {
       </div>
     </div>
 
-    <h2 id="download-analytics-title" class="sr-only">
-      {{ $t('package.downloads.title') }}
+    <h2 id="trends-chart-title" class="sr-only">
+      {{ $t('package.trends.title') }}
     </h2>
 
-    <div role="region" aria-labelledby="download-analytics-title">
+    <!-- Chart panel (active metric) -->
+    <div role="region" aria-labelledby="trends-chart-title">
       <ClientOnly v-if="chartData.dataset">
         <div :data-pending="pending">
           <VueUiXy
@@ -1752,21 +1858,17 @@ const chartConfig = computed(() => {
           <div class="min-h-[260px]" />
         </template>
       </ClientOnly>
+
+      <div
+        v-if="!chartData.dataset && !activeMetricState.pending"
+        class="min-h-[260px] flex items-center justify-center text-fg-subtle font-mono text-sm"
+      >
+        {{ $t('package.trends.no_data') }}
+      </div>
     </div>
 
     <div
-      v-if="!chartData.dataset && !pending"
-      class="min-h-[260px] flex items-center justify-center text-fg-subtle font-mono text-sm"
-    >
-      {{
-        $t('package.trends.no_data', {
-          facet: $t('package.trends.items.downloads'),
-        })
-      }}
-    </div>
-
-    <div
-      v-if="pending"
+      v-if="activeMetricState.pending"
       role="status"
       aria-live="polite"
       class="absolute top-1/2 inset-is-1/2 -translate-x-1/2 -translate-y-1/2 text-xs text-fg-subtle font-mono bg-bg/70 backdrop-blur px-3 py-2 rounded-md border border-border"
@@ -1793,7 +1895,7 @@ const chartConfig = computed(() => {
 
 /* Override default placement of the refresh button to have it to the minimap's side */
 @media screen and (min-width: 767px) {
-  #download-analytics .vue-data-ui-refresh-button {
+  #trends-chart .vue-data-ui-refresh-button {
     top: -0.6rem !important;
     left: calc(100% + 2rem) !important;
   }

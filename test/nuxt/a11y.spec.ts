@@ -195,8 +195,8 @@ import {
 // The #components import automatically provides the client variant
 import HeaderAccountMenuServer from '~/components/Header/AccountMenu.server.vue'
 import ToggleServer from '~/components/Settings/Toggle.server.vue'
-import PackageDownloadAnalytics from '~/components/Package/DownloadAnalytics.vue'
 import SearchProviderToggleServer from '~/components/SearchProviderToggle.server.vue'
+import PackageTrendsChart from '~/components/Package/TrendsChart.vue'
 
 describe('component accessibility audits', () => {
   describe('DateTime', () => {
@@ -605,7 +605,7 @@ describe('component accessibility audits', () => {
     // inherently provided by the native <dialog> element with aria-labelledby.
   })
 
-  describe('PackageDownloadAnalytics', () => {
+  describe('PackageTrendsChart', () => {
     const mockWeeklyDownloads = [
       {
         downloads: 1000,
@@ -634,7 +634,7 @@ describe('component accessibility audits', () => {
     ]
 
     it('should have no accessibility violations (non-modal)', async () => {
-      const wrapper = await mountSuspended(PackageDownloadAnalytics, {
+      const wrapper = await mountSuspended(PackageTrendsChart, {
         props: {
           weeklyDownloads: mockWeeklyDownloads,
           packageName: 'vue',
@@ -648,7 +648,7 @@ describe('component accessibility audits', () => {
     })
 
     it('should have no accessibility violations with empty data', async () => {
-      const wrapper = await mountSuspended(PackageDownloadAnalytics, {
+      const wrapper = await mountSuspended(PackageTrendsChart, {
         props: {
           weeklyDownloads: [],
           packageName: 'vue',
@@ -1607,8 +1607,8 @@ describe('component accessibility audits', () => {
         props: { packages: [] },
         global: {
           stubs: {
-            DownloadAnalytics: {
-              template: '<div data-test-id="download-analytics-stub"></div>',
+            TrendsChart: {
+              template: '<div data-test-id="trends-chart-stub"></div>',
             },
           },
         },
@@ -1622,8 +1622,8 @@ describe('component accessibility audits', () => {
         props: { packages: ['vue', 'react'] },
         global: {
           stubs: {
-            DownloadAnalytics: {
-              template: '<div data-test-id="download-analytics-stub"></div>',
+            TrendsChart: {
+              template: '<div data-test-id="trends-chart-stub"></div>',
             },
           },
         },

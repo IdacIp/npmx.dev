@@ -362,8 +362,11 @@
       "legend_estimation": "Estimation",
       "no_data": "Données non disponibles",
       "y_axis_label": "{facet} {granularity}",
+      "facet": "Facette",
+      "title": "Tendances",
       "items": {
-        "downloads": "Téléchargements"
+        "downloads": "Téléchargements",
+        "likes": "J'aime"
       }
     }
   },
@@ -908,7 +911,7 @@
         "up_to_you": "À vous de décider !"
       },
       "trends": {
-        "title": "Téléchargements hebdomadaires"
+        "title": "Comparer les tendances"
       }
     }
   }

@@ -281,7 +281,7 @@ const config = computed(() => {
     <!-- The Chart is mounted after the dialog has transitioned -->
     <!-- This avoids flaky behavior that hides the chart's minimap half of the time -->
     <Transition name="opacity" mode="out-in">
-      <PackageDownloadAnalytics
+      <PackageTrendsChart
         v-if="hasChartModalTransitioned"
         :weeklyDownloads="weeklyDownloads"
         :inModal="true"

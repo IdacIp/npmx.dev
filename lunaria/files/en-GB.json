@@ -328,8 +328,11 @@
       "legend_estimation": "Estimation",
       "no_data": "No data available",
       "y_axis_label": "{granularity} {facet}",
+      "facet": "Facet",
+      "title": "Trends",
       "items": {
-        "downloads": "Downloads"
+        "downloads": "Downloads",
+        "likes": "Likes"
       }
     },
     "downloads": {
@@ -969,7 +972,7 @@
         "up_to_you": "Up to you!"
       },
       "trends": {
-        "title": "Weekly Downloads"
+        "title": "Compare Trends"
       }
     }
   },
