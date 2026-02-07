@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { LinkBase } from '#components'
 import { isEditableElement } from '~/utils/input'
 
 withDefaults(
@@ -19,7 +20,7 @@ const showMobileMenu = shallowRef(false)
 const route = useRoute()
 const isMobile = useIsMobile()
 const isSearchExpandedManually = shallowRef(false)
-const searchBoxRef = shallowRef<{ focus: () => void } | null>(null)
+const searchBoxRef = useTemplateRef('searchBoxRef')
 
 // On search page, always show search expanded on mobile
 const isOnHomePage = computed(() => route.name === 'index')
@@ -65,7 +66,7 @@ onKeyStroke(
   e => isKeyWithoutModifiers(e, ',') && !isEditableElement(e.target),
   e => {
     e.preventDefault()
-    navigateTo('/settings')
+    navigateTo({ name: 'settings' })
   },
   { dedupe: true },
 )
@@ -78,54 +79,41 @@ onKeyStroke(
     !e.defaultPrevented,
   e => {
     e.preventDefault()
-    navigateTo('/compare')
+    navigateTo({ name: 'compare' })
   },
   { dedupe: true },
 )
 </script>
 
 <template>
-  <header class="sticky top-0 z-50 bg-bg/80 backdrop-blur-md border-b border-border">
+  <header class="sticky top-0 z-50 border-b border-border">
+    <div class="absolute inset-0 bg-bg/80 backdrop-blur-md" />
     <nav
       :aria-label="$t('nav.main_navigation')"
-      class="container min-h-14 flex items-center gap-2"
+      class="relative container min-h-14 flex items-center gap-2 z-1"
       :class="isOnHomePage ? 'justify-end' : 'justify-between'"
     >
       <!-- Mobile: Logo + search button (expands search, doesn't navigate) -->
       <button
         v-if="!isSearchExpanded && !isOnHomePage"
         type="button"
-        class="sm:hidden flex-shrink-0 inline-flex items-center gap-2 font-mono text-lg font-medium text-fg hover:text-fg transition-colors duration-200 focus-ring rounded"
+        class="sm:hidden flex-shrink-0 inline-flex items-center gap-2 font-mono text-lg font-medium text-fg hover:text-fg transition-colors duration-200 rounded"
         :aria-label="$t('nav.tap_to_search')"
         @click="expandMobileSearch"
       >
-        <img
-          aria-hidden="true"
-          :alt="$t('alt_logo')"
-          src="/logo.svg"
-          width="96"
-          height="96"
-          class="w-8 h-8 rounded-lg"
-        />
+        <AppLogo class="w-8 h-8 rounded-lg" />
         <span class="i-carbon:search w-4 h-4 text-fg-subtle" aria-hidden="true" />
       </button>
 
       <!-- Desktop: Logo (navigates home) -->
       <div v-if="showLogo" class="hidden sm:flex flex-shrink-0 items-center">
         <NuxtLink
-          to="/"
+          :to="{ name: 'index' }"
           :aria-label="$t('header.home')"
           dir="ltr"
-          class="inline-flex items-center gap-2 header-logo font-mono text-lg font-medium text-fg hover:text-fg transition-colors duration-200 focus-ring rounded"
+          class="inline-flex items-center gap-1 header-logo font-mono text-lg font-medium text-fg hover:text-fg/90 transition-colors duration-200 rounded"
         >
-          <img
-            aria-hidden="true"
-            :alt="$t('alt_logo')"
-            src="/logo.svg"
-            width="96"
-            height="96"
-            class="w-8 h-8 rounded-lg"
-          />
+          <AppLogo class="w-8 h-8 rounded-lg" />
           <span>npmx</span>
         </NuxtLink>
       </div>
@@ -146,7 +134,7 @@ onKeyStroke(
           @blur="handleSearchBlur"
         />
         <ul
-          v-if="!isSearchExpanded"
+          v-if="!isSearchExpanded && isConnected && npmUser"
           :class="{ hidden: showFullSearch }"
           class="hidden sm:flex items-center gap-4 sm:gap-6 list-none m-0 p-0"
         >
@@ -163,57 +151,39 @@ onKeyStroke(
       </div>
 
       <!-- End: Desktop nav items + Mobile menu button -->
-      <div class="flex-shrink-0 flex items-center gap-4 sm:gap-6">
+      <div class="hidden sm:flex flex-shrink-0">
         <!-- Desktop: Compare link -->
-        <NuxtLink
-          to="/compare"
-          class="hidden sm:inline-flex link-subtle font-mono text-sm items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
-          aria-keyshortcuts="c"
+        <LinkBase
+          class="border-none"
+          variant="button-secondary"
+          :to="{ name: 'compare' }"
+          keyshortcut="c"
         >
           {{ $t('nav.compare') }}
-          <kbd
-            class="inline-flex items-center justify-center w-5 h-5 text-xs bg-bg-muted border border-border rounded"
-            aria-hidden="true"
-          >
-            c
-          </kbd>
-        </NuxtLink>
+        </LinkBase>
 
         <!-- Desktop: Settings link -->
-        <NuxtLink
-          to="/settings"
-          class="hidden sm:inline-flex link-subtle font-mono text-sm items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
-          aria-keyshortcuts=","
+        <LinkBase
+          class="border-none"
+          variant="button-secondary"
+          :to="{ name: 'settings' }"
+          keyshortcut=","
         >
           {{ $t('nav.settings') }}
-          <kbd
-            class="inline-flex items-center justify-center w-5 h-5 text-xs bg-bg-muted border border-border rounded"
-            aria-hidden="true"
-          >
-            ,
-          </kbd>
-        </NuxtLink>
+        </LinkBase>
 
-        <!-- Desktop: Account menu -->
-        <div class="hidden sm:block">
-          <HeaderAccountMenu />
-        </div>
-
-        <!-- Mobile: Menu button (always visible, toggles menu) -->
-        <button
-          type="button"
-          class="sm:hidden flex items-center p-2 -m-2 text-fg-subtle hover:text-fg transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 rounded"
-          :aria-label="showMobileMenu ? $t('common.close') : $t('nav.open_menu')"
-          :aria-expanded="showMobileMenu"
-          @click="showMobileMenu = !showMobileMenu"
-        >
-          <span
-            class="w-6 h-6 inline-block"
-            :class="showMobileMenu ? 'i-carbon:close' : 'i-carbon:menu'"
-            aria-hidden="true"
-          />
-        </button>
+        <HeaderAccountMenu />
       </div>
+
+      <!-- Mobile: Menu button (always visible, click to open menu) -->
+      <ButtonBase
+        type="button"
+        class="sm:hidden flex"
+        :aria-label="$t('nav.open_menu')"
+        :aria-expanded="showMobileMenu"
+        @click="showMobileMenu = !showMobileMenu"
+        classicon="i-carbon:menu"
+      />
     </nav>
 
     <!-- Mobile menu -->

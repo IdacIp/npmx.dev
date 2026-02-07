@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { StructuredFilters } from '#shared/types/preferences'
+
 const props = defineProps<{
   /** The search result object containing package data */
   result: NpmSearchResult
@@ -8,8 +10,14 @@ const props = defineProps<{
   showPublisher?: boolean
   prefetch?: boolean
   index?: number
+  /** Filters to apply to the results */
+  filters?: StructuredFilters
   /** Search query for highlighting exact matches */
   searchQuery?: string
+}>()
+
+const emit = defineEmits<{
+  clickKeyword: [keyword: string]
 }>()
 
 /** Check if this package is an exact match for the search query */
@@ -26,31 +34,23 @@ const pkgDescription = useMarkdown(() => ({
   plain: true,
   packageName: props.result.package.name,
 }))
+
+const numberFormatter = useNumberFormatter()
 </script>
 
 <template>
-  <article
-    class="group card-interactive scroll-mt-48 scroll-mb-6 relative focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-bg focus-within:ring-offset-2 focus-within:ring-fg/50 focus-within:bg-bg-muted focus-within:border-border-hover"
-    :class="{
-      'border-accent/30 contrast-more:border-accent/90 bg-accent/5': isExactMatch,
-    }"
-  >
-    <!-- Glow effect for exact matches -->
-    <div
-      v-if="isExactMatch"
-      class="absolute -inset-px rounded-lg bg-gradient-to-r from-accent/0 via-accent/20 to-accent/0 opacity-100 blur-sm -z-1 pointer-events-none motion-reduce:opacity-50"
-      aria-hidden="true"
-    />
+  <BaseCard :isExactMatch="isExactMatch">
     <div class="mb-2 flex items-baseline justify-start gap-2">
       <component
         :is="headingLevel ?? 'h3'"
         class="font-mono text-sm sm:text-base font-medium text-fg group-hover:text-fg transition-colors duration-200 min-w-0 break-all"
       >
         <NuxtLink
-          :to="{ name: 'package', params: { package: result.package.name.split('/') } }"
+          :to="packageRoute(result.package.name)"
           :prefetch-on="prefetch ? 'visibility' : 'interaction'"
           class="decoration-none scroll-mt-48 scroll-mb-6 after:content-[''] after:absolute after:inset-0"
           :data-result-index="index"
+          dir="ltr"
           >{{ result.package.name }}</NuxtLink
         >
         <span
@@ -84,7 +84,7 @@ const pkgDescription = useMarkdown(() => ({
         <p v-if="pkgDescription" class="text-fg-muted text-xs sm:text-sm line-clamp-2 mb-2 sm:mb-3">
           <span v-html="pkgDescription" />
         </p>
-        <div class="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-2 text-xs text-fg-subtle">
+        <div class="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-2 text-xs text-fg-muted">
           <dl v-if="showPublisher || result.package.date" class="flex items-center gap-4 m-0">
             <div
               v-if="showPublisher && result.package.publisher?.username"
@@ -94,7 +94,7 @@ const pkgDescription = useMarkdown(() => ({
               <dd class="font-mono">{{ result.package.publisher.username }}</dd>
             </div>
             <div v-if="result.package.date" class="flex items-center gap-1.5">
-              <dt class="sr-only">{{ $t('package.card.updated') }}</dt>
+              <dt class="sr-only">{{ $t('package.card.published') }}</dt>
               <dd>
                 <DateTime
                   :datetime="result.package.date"
@@ -113,7 +113,7 @@ const pkgDescription = useMarkdown(() => ({
         <!-- Mobile: downloads on separate row -->
         <dl
           v-if="result.downloads?.weekly"
-          class="sm:hidden flex items-center gap-4 mt-2 text-xs text-fg-subtle m-0"
+          class="sm:hidden flex items-center gap-4 mt-2 text-xs text-fg-muted m-0"
         >
           <div class="flex items-center gap-1.5">
             <dt class="sr-only">{{ $t('package.card.weekly_downloads') }}</dt>
@@ -160,14 +160,30 @@ const pkgDescription = useMarkdown(() => ({
       </div>
     </div>
 
-    <ul
+    <div
       v-if="result.package.keywords?.length"
       :aria-label="$t('package.card.keywords')"
-      class="relative z-10 flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border list-none m-0 p-0"
+      class="relative z-10 flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-border list-none m-0 p-0 pointer-events-none items-center"
     >
-      <li v-for="keyword in result.package.keywords.slice(0, 5)" :key="keyword" class="tag">
+      <ButtonBase
+        v-for="keyword in result.package.keywords.slice(0, 5)"
+        class="pointer-events-auto"
+        size="small"
+        :key="keyword"
+        :aria-pressed="props.filters?.keywords.includes(keyword)"
+        :title="`Filter by ${keyword}`"
+        :data-result-index="index"
+        @click.stop="emit('clickKeyword', keyword)"
+      >
         {{ keyword }}
-      </li>
-    </ul>
-  </article>
+      </ButtonBase>
+      <span
+        v-if="result.package.keywords.length > 5"
+        class="text-fg-subtle text-xs pointer-events-auto"
+        :title="result.package.keywords.slice(5).join(', ')"
+      >
+        +{{ numberFormatter.format(result.package.keywords.length - 5) }}
+      </span>
+    </div>
+  </BaseCard>
 </template>

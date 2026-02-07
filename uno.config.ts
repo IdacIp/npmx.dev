@@ -31,13 +31,20 @@ export default defineConfig({
       },
     }),
     // keep this preset last
-    process.env.CI ? undefined : presetRtl(),
+    ...(process.env.CI ? [] : [presetRtl()]),
   ].filter(Boolean),
   transformers: [transformerDirectives(), transformerVariantGroup()],
   theme: {
+    spacing: { DEFAULT: '4px' },
     font: {
       mono: "'Geist Mono', monospace",
       sans: "'Geist', system-ui, -apple-system, sans-serif",
+    },
+    text: {
+      '2xs': { fontSize: '0.6875rem' }, // 11px
+      '3xs': { fontSize: '0.625rem' }, // 10px
+      '4xs': { fontSize: '0.5625rem' }, // 9px
+      '5xs': { fontSize: '0.5rem' }, // 8px
     },
     colors: {
       // Minimal black & white palette with subtle grays
@@ -120,46 +127,14 @@ export default defineConfig({
   shortcuts: [
     // Layout
     ['container', 'max-w-6xl mx-auto px-4 sm:px-6'],
-    ['container-sm', 'max-w-4xl mx-auto px-4 sm:px-6'],
+    ['container-sm', 'max-w-5xl mx-auto px-4 sm:px-6'],
 
     // Focus states - subtle but accessible
-    ['focus-ring', 'outline-none focus-visible:(ring-2 ring-fg/10 ring-offset-2)'],
+    ['focus-ring', 'outline-none focus-visible:(ring-2 ring-fg/50 ring-offset-2)'],
 
-    // Buttons
-    [
-      'btn',
-      'inline-flex items-center justify-center px-4 py-2 font-mono text-sm border border-border rounded-md bg-transparent text-fg transition-all duration-200 hover:(bg-fg hover:text-bg border-fg) focus-ring active:scale-98 disabled:(opacity-40 cursor-not-allowed hover:bg-transparent hover:text-fg)',
-    ],
-    [
-      'btn-ghost',
-      'inline-flex items-center justify-center px-3 py-1.5 font-mono text-sm text-fg-muted bg-transparent transition-all duration-200 hover:text-fg focus-ring',
-    ],
-
-    // Links
-    [
-      'link',
-      'text-fg underline-offset-4 decoration-border hover:(decoration-fg underline) transition-colors duration-200 focus-ring',
-    ],
     ['link-subtle', 'text-fg-muted hover:text-fg transition-colors duration-200 focus-ring'],
 
-    // Cards
-    [
-      'card',
-      'bg-bg-subtle border border-border rounded-lg p-4 sm:p-6 transition-[border-color,background-color] duration-200',
-    ],
-    ['card-interactive', 'card hover:(border-border-hover bg-bg-muted) cursor-pointer'],
-
-    // Form elements
-    [
-      'input-base',
-      'w-full bg-bg-subtle border border-border rounded-md px-4 py-3 font-mono text-sm text-fg placeholder:text-fg-subtle transition-all duration-200 focus:(border-fg/40 outline-none ring-1 ring-fg/10)',
-    ],
-
-    // Tags/badges
-    [
-      'tag',
-      'inline-flex items-center px-2 py-0.5 text-xs font-mono text-fg-muted bg-bg-muted border border-border rounded transition-colors duration-200 hover:(text-fg border-border-hover)',
-    ],
+    // badges
     ['badge-orange', 'bg-badge-orange/10 text-badge-orange'],
     ['badge-yellow', 'bg-badge-yellow/10 text-badge-yellow'],
     ['badge-green', 'bg-badge-green/10 text-badge-green'],
@@ -169,21 +144,6 @@ export default defineConfig({
     ['badge-purple', 'bg-badge-purple/10 text-badge-purple'],
     ['badge-pink', 'bg-badge-pink/10 text-badge-pink'],
     ['badge-subtle', 'bg-bg-subtle text-fg-subtle'],
-
-    // Code blocks
-    [
-      'code-block',
-      'bg-bg-muted border border-border rounded-md p-4 font-mono text-sm overflow-x-auto',
-    ],
-
-    // Skeleton loading
-    ['skeleton', 'bg-bg-elevated rounded animate-skeleton-pulse'],
-
-    // Subtle divider
-    ['divider', 'border-t border-border'],
-
-    // Section spacing
-    ['section', 'py-8 sm:py-12'],
   ],
   rules: [
     // Custom scale for active states

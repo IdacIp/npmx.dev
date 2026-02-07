@@ -1,39 +1,43 @@
 <script setup lang="ts">
-const handleInput = shallowRef('')
+import { useAtproto } from '~/composables/atproto/useAtproto'
+import { authRedirect } from '~/utils/atproto/helpers'
 
+const handleInput = shallowRef('')
+const route = useRoute()
 const { user, logout } = useAtproto()
 
+// https://atproto.com supports 4 locales as of 2026-02-07
+const { locale } = useI18n()
+const currentLang = locale.value.split('-')[0] ?? 'en'
+const localeSubPath = ['ko', 'pt', 'ja'].includes(currentLang) ? currentLang : ''
+const atprotoLink = `https://atproto.com/${localeSubPath}`
+
 async function handleBlueskySignIn() {
-  await navigateTo(
-    {
-      path: '/api/auth/atproto',
-      query: { handle: 'https://bsky.social' },
-    },
-    { external: true },
-  )
+  await authRedirect('https://bsky.social', { redirectTo: route.fullPath })
 }
 
 async function handleCreateAccount() {
-  await navigateTo(
-    {
-      path: '/api/auth/atproto',
-      query: { handle: 'https://npmx.social', create: 'true' },
-    },
-    { external: true },
-  )
+  await authRedirect('https://npmx.social', { create: true, redirectTo: route.fullPath })
 }
 
 async function handleLogin() {
   if (handleInput.value) {
-    await navigateTo(
-      {
-        path: '/api/auth/atproto',
-        query: { handle: handleInput.value },
-      },
-      { external: true },
-    )
+    await authRedirect(handleInput.value)
   }
 }
+
+watch(handleInput, newHandleInput => {
+  if (!newHandleInput) return
+
+  const normalized = newHandleInput
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]/g, '')
+
+  if (normalized !== newHandleInput) {
+    handleInput.value = normalized
+  }
+})
 </script>
 
 <template>
@@ -49,7 +53,7 @@ async function handleLogin() {
         </div>
       </div>
       <button
-        class="w-full px-4 py-2 font-mono text-sm text-fg-muted bg-bg-subtle border border-border rounded-md transition-colors duration-200 hover:text-fg hover:border-border-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/50"
+        class="w-full px-4 py-2 font-mono text-sm text-fg-muted bg-bg-subtle border border-border rounded-md transition-colors duration-200 hover:text-fg hover:border-border-hover focus-visible:outline-accent/70"
         @click="logout"
       >
         {{ $t('auth.modal.disconnect') }}
@@ -74,25 +78,24 @@ async function handleLogin() {
             type="text"
             name="handle"
             :placeholder="$t('auth.modal.handle_placeholder')"
-            autocomplete="off"
-            spellcheck="false"
-            class="w-full px-3 py-2 font-mono text-sm bg-bg-subtle border border-border rounded-md text-fg placeholder:text-fg-subtle transition-colors duration-200 focus:border-border-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/50"
+            v-bind="noCorrect"
+            class="w-full px-3 py-2 font-mono text-sm bg-bg-subtle border border-border rounded-md text-fg placeholder:text-fg-subtle transition-colors duration-200 hover:border-fg-subtle focus:border-accent focus-visible:(outline-2 outline-accent/70)"
           />
         </div>
 
         <details class="text-sm">
           <summary
-            class="text-fg-subtle cursor-pointer hover:text-fg-muted transition-colors duration-200"
+            class="text-fg-subtle cursor-pointer hover:text-fg-muted transition-colors duration-200 focus-visible:(outline-2 outline-accent/70)"
           >
             {{ $t('auth.modal.what_is_atmosphere') }}
           </summary>
           <div class="mt-3">
-            <i18n-t keypath="auth.modal.atmosphere_explanation" tag="p">
+            <i18n-t keypath="auth.modal.atmosphere_explanation" tag="p" scope="global">
               <template #npmx>
                 <span class="font-bold">npmx.dev</span>
               </template>
               <template #atproto>
-                <a href="https://atproto.com" target="_blank" class="text-blue-400 hover:underline">
+                <a :href="atprotoLink" target="_blank" class="text-blue-400 hover:underline">
                   AT Protocol
                 </a>
               </template>
@@ -111,24 +114,17 @@ async function handleLogin() {
         </details>
       </div>
 
-      <button
-        type="submit"
-        :disabled="!handleInput.trim()"
-        class="w-full px-4 py-2 font-mono text-sm text-bg bg-fg rounded-md transition-all duration-200 hover:bg-fg/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      >
+      <ButtonBase type="submit" variant="primary" :disabled="!handleInput.trim()" class="w-full">
         {{ $t('auth.modal.connect') }}
-      </button>
-      <button
-        type="button"
-        class="w-full px-4 py-2 font-mono text-sm text-bg bg-fg rounded-md transition-all duration-200 hover:bg-fg/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-        @click="handleCreateAccount"
-      >
+      </ButtonBase>
+      <ButtonBase type="button" variant="primary" class="w-full" @click="handleCreateAccount">
         {{ $t('auth.modal.create_account') }}
-      </button>
-      <hr />
-      <button
+      </ButtonBase>
+      <hr class="color-border" />
+      <ButtonBase
         type="button"
-        class="w-full px-4 py-2 font-mono text-sm text-bg bg-fg rounded-md transition-all duration-200 hover:bg-fg/90 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/50 focus-visible:ring-offset-2 focus-visible:ring-offset-bg flex items-center justify-center gap-2"
+        variant="primary"
+        class="w-full flex items-center justify-center gap-2"
         @click="handleBlueskySignIn"
       >
         {{ $t('auth.modal.connect_bluesky') }}
@@ -138,7 +134,7 @@ async function handleLogin() {
             d="M13.873 3.805C21.21 9.332 29.103 20.537 32 26.55v15.882c0-.338-.13.044-.41.867-1.512 4.456-7.418 21.847-20.923 7.944-7.111-7.32-3.819-14.64 9.125-16.85-7.405 1.264-15.73-.825-18.014-9.015C1.12 23.022 0 8.51 0 6.55 0-3.268 8.579-.182 13.873 3.805ZM50.127 3.805C42.79 9.332 34.897 20.537 32 26.55v15.882c0-.338.13.044.41.867 1.512 4.456 7.418 21.847 20.923 7.944 7.111-7.32 3.819-14.64-9.125-16.85 7.405 1.264 15.73-.825 18.014-9.015C62.88 23.022 64 8.51 64 6.55c0-9.818-8.578-6.732-13.873-2.745Z"
           ></path>
         </svg>
-      </button>
+      </ButtonBase>
     </form>
   </Modal>
 </template>
