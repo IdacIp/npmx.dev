@@ -6,6 +6,7 @@ import { useCssVariables } from '~/composables/useColors'
 import { OKLCH_NEUTRAL_FALLBACK, transparentizeOklch } from '~/utils/colors'
 import { getFrameworkColor, isListedFramework } from '~/utils/frameworks'
 import { drawNpmxLogoAndTaglineWatermark } from '~/composables/useChartWatermark'
+import type { RepoRef } from '#shared/utils/git-providers'
 import type {
   ChartTimeGranularity,
   DailyDataPoint,
@@ -35,6 +36,7 @@ const props = withDefaults(
      * Used when `weeklyDownloads` is not provided.
      */
     packageNames?: string[]
+    repoRef?: RepoRef | null | undefined
     createdIso?: string | null
 
     /** When true, shows facet selector (e.g. Downloads / Likes). */
@@ -332,6 +334,32 @@ const effectivePackageNames = computed<string[]>(() => {
   return single ? [single] : []
 })
 
+const {
+  fetchPackageDownloadEvolution,
+  fetchPackageLikesEvolution,
+  fetchRepoContributorsEvolution,
+  fetchRepoRefsForPackages,
+} = useCharts()
+
+const repoRefsByPackage = shallowRef<Record<string, RepoRef | null>>({})
+const repoRefsRequestToken = shallowRef(0)
+
+watch(
+  () => effectivePackageNames.value,
+  async names => {
+    if (!import.meta.client) return
+    if (!isMultiPackageMode.value) {
+      repoRefsByPackage.value = {}
+      return
+    }
+    const currentToken = ++repoRefsRequestToken.value
+    const refs = await fetchRepoRefsForPackages(names)
+    if (currentToken !== repoRefsRequestToken.value) return
+    repoRefsByPackage.value = refs
+  },
+  { immediate: true },
+)
+
 const selectedGranularity = usePermalink<ChartTimeGranularity>('granularity', DEFAULT_GRANULARITY, {
   permanent: props.permalink,
 })
@@ -361,9 +389,10 @@ const isEndDateOnPeriodEnd = computed(() => {
 const isEstimationGranularity = computed(
   () => displayedGranularity.value === 'monthly' || displayedGranularity.value === 'yearly',
 )
-const shouldRenderEstimationOverlay = computed(
-  () => !pending.value && isEstimationGranularity.value,
+const supportsEstimation = computed(
+  () => isEstimationGranularity.value && selectedMetric.value !== 'contributors',
 )
+const shouldRenderEstimationOverlay = computed(() => !pending.value && supportsEstimation.value)
 
 const startDate = usePermalink<string>('start', '', {
   permanent: props.permalink,
@@ -571,34 +600,111 @@ function applyDateRange<T extends Record<string, unknown>>(base: T): T & DateRan
   return next
 }
 
-const { fetchPackageDownloadEvolution, fetchPackageLikesEvolution } = useCharts()
-
-type MetricId = 'downloads' | 'likes'
+type MetricId = 'downloads' | 'likes' | 'contributors'
 const DEFAULT_METRIC_ID: MetricId = 'downloads'
+
+type MetricContext = {
+  packageName: string
+  repoRef?: RepoRef | null
+}
 
 type MetricDef = {
   id: MetricId
   label: string
-  fetch: (pkg: string, options: EvolutionOptions) => Promise<EvolutionData>
+  fetch: (context: MetricContext, options: EvolutionOptions) => Promise<EvolutionData>
+  supportsMulti?: boolean
 }
 
-const METRICS = computed<MetricDef[]>(() => [
-  {
-    id: 'downloads',
-    label: $t('package.trends.items.downloads'),
-    fetch: (pkg, opts) =>
-      fetchPackageDownloadEvolution(pkg, props.createdIso ?? null, opts) as Promise<EvolutionData>,
-  },
-  {
-    id: 'likes',
-    label: $t('package.trends.items.likes'),
-    fetch: (pkg, opts) => fetchPackageLikesEvolution(pkg, opts) as Promise<EvolutionData>,
-  },
-])
+const hasContributorsFacet = computed(() => {
+  if (isMultiPackageMode.value) {
+    return Object.values(repoRefsByPackage.value).some(ref => ref?.provider === 'github')
+  }
+  const ref = props.repoRef
+  return ref?.provider === 'github' && ref.owner && ref.repo
+})
+
+const METRICS = computed<MetricDef[]>(() => {
+  const metrics: MetricDef[] = [
+    {
+      id: 'downloads',
+      label: $t('package.trends.items.downloads'),
+      fetch: ({ packageName }, opts) =>
+        fetchPackageDownloadEvolution(
+          packageName,
+          props.createdIso ?? null,
+          opts,
+        ) as Promise<EvolutionData>,
+      supportsMulti: true,
+    },
+    {
+      id: 'likes',
+      label: $t('package.trends.items.likes'),
+      fetch: ({ packageName }, opts) => fetchPackageLikesEvolution(packageName, opts),
+      supportsMulti: true,
+    },
+  ]
+
+  if (hasContributorsFacet.value) {
+    metrics.push({
+      id: 'contributors',
+      label: $t('package.trends.items.contributors'),
+      fetch: ({ repoRef }, opts) => fetchRepoContributorsEvolution(repoRef, opts),
+      supportsMulti: true,
+    })
+  }
+
+  return metrics
+})
 
 const selectedMetric = usePermalink<MetricId>('facet', DEFAULT_METRIC_ID, {
   permanent: props.permalink,
 })
+
+const effectivePackageNamesForMetric = computed<string[]>(() => {
+  if (!isMultiPackageMode.value) return effectivePackageNames.value
+  if (selectedMetric.value !== 'contributors') return effectivePackageNames.value
+  return effectivePackageNames.value.filter(
+    name => repoRefsByPackage.value[name]?.provider === 'github',
+  )
+})
+
+const skippedPackagesWithoutGitHub = computed(() => {
+  if (!isMultiPackageMode.value) return []
+  if (selectedMetric.value !== 'contributors') return []
+  if (!effectivePackageNames.value.length) return []
+
+  return effectivePackageNames.value.filter(
+    name => repoRefsByPackage.value[name]?.provider !== 'github',
+  )
+})
+
+const availableGranularities = computed<ChartTimeGranularity[]>(() => {
+  if (selectedMetric.value === 'contributors') {
+    return ['weekly', 'monthly', 'yearly']
+  }
+
+  return ['daily', 'weekly', 'monthly', 'yearly']
+})
+
+watch(
+  () => [selectedMetric.value, availableGranularities.value] as const,
+  () => {
+    if (!availableGranularities.value.includes(selectedGranularity.value)) {
+      selectedGranularity.value = 'weekly'
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => METRICS.value,
+  metrics => {
+    if (!metrics.some(m => m.id === selectedMetric.value)) {
+      selectedMetric.value = DEFAULT_METRIC_ID
+    }
+  },
+  { immediate: true },
+)
 
 // Per-metric state keyed by metric id
 const metricStates = reactive<
@@ -624,10 +730,18 @@ const metricStates = reactive<
     evolutionsByPackage: {},
     requestToken: 0,
   },
+  contributors: {
+    pending: false,
+    evolution: [],
+    evolutionsByPackage: {},
+    requestToken: 0,
+  },
 })
 
 const activeMetricState = computed(() => metricStates[selectedMetric.value])
-const activeMetricDef = computed(() => METRICS.value.find(m => m.id === selectedMetric.value)!)
+const activeMetricDef = computed(
+  () => METRICS.value.find(m => m.id === selectedMetric.value) ?? METRICS.value[0],
+)
 const pending = computed(() => activeMetricState.value.pending)
 
 const isMounted = shallowRef(false)
@@ -695,21 +809,33 @@ watch(
 async function loadMetric(metricId: MetricId) {
   if (!import.meta.client) return
 
-  const packageNames = effectivePackageNames.value
-  if (!packageNames.length) return
-
   const state = metricStates[metricId]
   const metric = METRICS.value.find(m => m.id === metricId)!
   const currentToken = ++state.requestToken
   state.pending = true
 
-  const fetchFn = (pkg: string) => metric.fetch(pkg, options.value)
+  const fetchFn = (context: MetricContext) => metric.fetch(context, options.value)
 
   try {
+    const packageNames = effectivePackageNamesForMetric.value
+    if (!packageNames.length) {
+      if (isMultiPackageMode.value) state.evolutionsByPackage = {}
+      else state.evolution = []
+      displayedGranularity.value = selectedGranularity.value
+      return
+    }
+
     if (isMultiPackageMode.value) {
+      if (metric.supportsMulti === false) {
+        state.evolutionsByPackage = {}
+        displayedGranularity.value = selectedGranularity.value
+        return
+      }
+
       const settled = await Promise.allSettled(
         packageNames.map(async pkg => {
-          const result = await fetchFn(pkg)
+          const repoRef = metricId === 'contributors' ? repoRefsByPackage.value[pkg] : null
+          const result = await fetchFn({ packageName: pkg, repoRef })
           return { pkg, result: (result ?? []) as EvolutionData }
         }),
       )
@@ -750,7 +876,7 @@ async function loadMetric(metricId: MetricId) {
       }
     }
 
-    const result = await fetchFn(pkg)
+    const result = await fetchFn({ packageName: pkg, repoRef: props.repoRef })
     if (currentToken !== state.requestToken) return
 
     state.evolution = (result ?? []) as EvolutionData
@@ -778,9 +904,13 @@ const debouncedLoadNow = useDebounceFn(() => {
 const fetchTriggerKey = computed(() => {
   const names = effectivePackageNames.value.join(',')
   const o = options.value
+  const repoKey = props.repoRef
+    ? `${props.repoRef.provider}:${props.repoRef.owner}/${props.repoRef.repo}`
+    : ''
   return [
     isMultiPackageMode.value ? 'M' : 'S',
     names,
+    repoKey,
     String(props.createdIso ?? ''),
     String(o.granularity ?? ''),
     String('weeks' in o ? (o.weeks ?? '') : ''),
@@ -798,6 +928,18 @@ watch(
     debouncedLoadNow()
   },
   { flush: 'post' },
+)
+
+watch(
+  () => repoRefsByPackage.value,
+  () => {
+    if (!import.meta.client) return
+    if (!isMounted.value) return
+    if (!isMultiPackageMode.value) return
+    if (selectedMetric.value !== 'contributors') return
+    debouncedLoadNow()
+  },
+  { deep: true },
 )
 
 const effectiveDataSingle = computed<EvolutionData>(() => {
@@ -837,7 +979,7 @@ const chartData = computed<{
   }
 
   const state = activeMetricState.value
-  const names = effectivePackageNames.value
+  const names = effectivePackageNamesForMetric.value
   const granularity = displayedGranularity.value
 
   const timestampSet = new Set<number>()
@@ -877,9 +1019,15 @@ const chartData = computed<{
 
 const normalisedDataset = computed(() => {
   return chartData.value.dataset?.map(d => {
+    const lastValue = d.series.at(-1) ?? 0
+
+    // Contributors is an absolute metric: keep the partial period value as-is.
+    const projectedLastValue =
+      selectedMetric.value === 'contributors' ? lastValue : extrapolateLastValue(lastValue)
+
     return {
       ...d,
-      series: [...d.series.slice(0, -1), extrapolateLastValue(d.series.at(-1) ?? 0)],
+      series: [...d.series.slice(0, -1), projectedLastValue],
     }
   })
 })
@@ -935,6 +1083,13 @@ const granularityLabels = computed(() => ({
 function getGranularityLabel(granularity: ChartTimeGranularity) {
   return granularityLabels.value[granularity]
 }
+
+const granularityItems = computed(() =>
+  availableGranularities.value.map(granularity => ({
+    label: granularityLabels.value[granularity],
+    value: granularity,
+  })),
+)
 
 function clampRatio(value: number): number {
   if (value < 0) return 0
@@ -1052,6 +1207,8 @@ function getCompletionRatioForBucket(params: {
  * or the original `lastValue` when no extrapolation should be applied.
  */
 function extrapolateLastValue(lastValue: number) {
+  if (selectedMetric.value === 'contributors') return lastValue
+
   if (displayedGranularity.value !== 'monthly' && displayedGranularity.value !== 'yearly')
     return lastValue
 
@@ -1234,11 +1391,7 @@ function drawSvgPrintLegend(svg: Record<string, any>) {
   })
 
   // Inject the estimation legend item when necessary
-  if (
-    ['monthly', 'yearly'].includes(displayedGranularity.value) &&
-    !isEndDateOnPeriodEnd.value &&
-    !isZoomed.value
-  ) {
+  if (supportsEstimation.value && !isEndDateOnPeriodEnd.value && !isZoomed.value) {
     seriesNames.push(`
         <line
           x1="${svg.drawingArea.left + 12}"
@@ -1333,7 +1486,7 @@ const chartConfig = computed(() => {
           axis: {
             yLabel: $t('package.trends.y_axis_label', {
               granularity: getGranularityLabel(selectedGranularity.value),
-              facet: activeMetricDef.value.label,
+              facet: activeMetricDef.value?.label,
             }),
             yLabelOffsetX: 12,
             fontSize: isMobile.value ? 32 : 24,
@@ -1472,12 +1625,7 @@ watch(selectedMetric, value => {
           id="granularity"
           v-model="selectedGranularity"
           :disabled="activeMetricState.pending"
-          :items="[
-            { label: $t('package.trends.granularity_daily'), value: 'daily' },
-            { label: $t('package.trends.granularity_weekly'), value: 'weekly' },
-            { label: $t('package.trends.granularity_monthly'), value: 'monthly' },
-            { label: $t('package.trends.granularity_yearly'), value: 'yearly' },
-          ]"
+          :items="granularityItems"
         />
 
         <div class="grid grid-cols-2 gap-2 flex-1">
@@ -1535,10 +1683,15 @@ watch(selectedMetric, value => {
           <span class="i-lucide:undo-2 w-5 h-5" aria-hidden="true" />
         </button>
       </div>
+
+      <p v-if="skippedPackagesWithoutGitHub.length > 0" class="text-2xs font-mono text-fg-subtle">
+        {{ $t('package.trends.contributors_skip', { count: skippedPackagesWithoutGitHub.length }) }}
+        {{ skippedPackagesWithoutGitHub.join(', ') }}
+      </p>
     </div>
 
     <h2 id="trends-chart-title" class="sr-only">
-      {{ $t('package.trends.title') }} — {{ activeMetricDef.label }}
+      {{ $t('package.trends.title') }} — {{ activeMetricDef?.label }}
     </h2>
 
     <!-- Chart panel (active metric) -->
@@ -1557,12 +1710,7 @@ watch(selectedMetric, value => {
             <template #svg="{ svg }">
               <!-- Estimation lines for monthly & yearly granularities when the end date induces a downwards trend -->
               <g
-                v-if="
-                  !pending &&
-                  ['monthly', 'yearly'].includes(displayedGranularity) &&
-                  !isEndDateOnPeriodEnd &&
-                  !isZoomed
-                "
+                v-if="shouldRenderEstimationOverlay && !isEndDateOnPeriodEnd && !isZoomed"
                 v-html="drawEstimationLine(svg)"
               />
 
@@ -1640,10 +1788,7 @@ watch(selectedMetric, value => {
                 </template>
 
                 <!-- Estimation extra legend item -->
-                <div
-                  class="flex gap-1 place-items-center"
-                  v-if="['monthly', 'yearly'].includes(selectedGranularity)"
-                >
+                <div class="flex gap-1 place-items-center" v-if="supportsEstimation">
                   <svg viewBox="0 0 20 2" width="20">
                     <line
                       x1="0"

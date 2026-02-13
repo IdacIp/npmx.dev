@@ -1090,6 +1090,9 @@
             "title": {
               "type": "string"
             },
+            "contributors_skip": {
+              "type": "string"
+            },
             "items": {
               "type": "object",
               "properties": {
@@ -1097,6 +1100,9 @@
                   "type": "string"
                 },
                 "likes": {
+                  "type": "string"
+                },
+                "contributors": {
                   "type": "string"
                 }
               },
