@@ -150,6 +150,7 @@
     "view_permalink": "View permalink for this version",
     "navigation": "Package",
     "copy_name": "Copy package name",
+    "copy_version": "Copy package version",
     "deprecation": {
       "package": "This package has been deprecated.",
       "version": "This version has been deprecated.",
@@ -220,6 +221,8 @@
       "title": "Get started",
       "pm_label": "Package manager",
       "copy_command": "Copy install command",
+      "copy_dev_command": "Copy dev install command",
+      "dev_dependency_hint": "Usually installed as a dev dependency",
       "view_types": "View {package}"
     },
     "create": {
@@ -290,13 +293,25 @@
       "view_all": "View {count} version | View all {count} versions",
       "distribution_title": "Semver Group",
       "distribution_modal_title": "Versions",
+      "distribution_range_date_same_year": "from {from} to {to}, {endYear}",
+      "distribution_range_date_multiple_years": "from {from}, {startYear} to {to}, {endYear}",
       "grouping_major": "Major",
       "grouping_minor": "Minor",
-      "recent_versions_only": "Recent versions only",
+      "grouping_versions_title": "Versions",
+      "grouping_versions_all": "All",
+      "grouping_versions_only_recent": "Only recent",
+      "grouping_usage_title": "Usage",
+      "grouping_usage_all": "All",
+      "grouping_usage_low": "Low",
       "recent_versions_only_tooltip": "Show only versions published within the last year.",
-      "show_low_usage": "Show low usage versions",
       "show_low_usage_tooltip": "Include version groups with less than 1% of total downloads.",
-      "date_range_tooltip": "Last week of version distributions only"
+      "y_axis_label": "Downloads",
+      "filter_placeholder": "Filter by semver (e.g. ^3.0.0)",
+      "filter_invalid": "Invalid semver range",
+      "filter_help": "Semver range filter help",
+      "filter_tooltip": "Filter versions using a {link}. For example, ^3.0.0 shows all 3.x versions.",
+      "filter_tooltip_link": "semver range",
+      "no_matches": "No versions match this range"
     },
     "dependencies": {
       "title": "Dependency ({count}) | Dependencies ({count})",
@@ -306,7 +321,8 @@
       "view_vulnerabilities": "View vulnerabilities",
       "outdated_major": "{count} major version behind (latest: {latest}) | {count} major versions behind (latest: {latest})",
       "outdated_minor": "{count} minor version behind (latest: {latest}) | {count} minor versions behind (latest: {latest})",
-      "outdated_patch": "Patch update available (latest: {latest})"
+      "outdated_patch": "Patch update available (latest: {latest})",
+      "has_replacement": "This dependency has suggested replacements"
     },
     "peer_dependencies": {
       "title": "Peer Dependency ({count}) | Peer Dependencies ({count})",
@@ -350,15 +366,17 @@
       "y_axis_label": "{granularity} {facet}",
       "facet": "Facet",
       "title": "Trends",
+      "contributors_skip": "Not shown in Contributors (no GitHub repo):",
       "items": {
         "downloads": "Downloads",
-        "likes": "Likes"
-      }
+        "likes": "Likes",
+        "contributors": "Contributors"
+      },
+      "play_animation": "Play animation",
+      "pause_animation": "Pause animation"
     },
     "downloads": {
       "title": "Weekly Downloads",
-      "modal_title": "Weekly Downloads",
-      "analyze": "Analyze downloads",
       "community_distribution": "View community adoption distribution"
     },
     "install_scripts": {
@@ -612,6 +630,7 @@
       "invalid_name": "Invalid package name:",
       "available": "This name is available!",
       "taken": "This name is already taken.",
+      "missing_permission": "You do not have permission to add a package to scope {'@'}{scope}.",
       "similar_warning": "Similar packages exist - npm may reject this name:",
       "related": "Related packages:",
       "scope_warning_title": "Consider using a scoped package instead",
@@ -806,8 +825,16 @@
         "managers": "package managers"
       }
     },
+    "team": {
+      "title": "Team",
+      "governance": "Governance",
+      "role_steward": "steward",
+      "role_maintainer": "maintainer",
+      "sponsor": "sponsor",
+      "sponsor_aria": "Sponsor {name} on GitHub"
+    },
     "contributors": {
-      "title": "{count} Contributor | {count} Contributors",
+      "title": "... and {count} more contributor | ... and {count} more contributors",
       "description": "npmx is fully open source, built by an amazing community of contributors. Join us and let's build the npm browsing experience we always wanted, together.",
       "loading": "Loading contributors...",
       "error": "Failed to load contributors",
@@ -890,6 +917,7 @@
       "section_packages": "Packages",
       "section_facets": "Facets",
       "section_comparison": "Comparison",
+      "copy_as_markdown": "Copy table",
       "loading": "Loading package data...",
       "error": "Failed to load package data. Please try again.",
       "empty_title": "Select packages to compare",

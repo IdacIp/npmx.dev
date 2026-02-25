@@ -115,6 +115,7 @@ import {
   AppHeader,
   AppLogo,
   BaseCard,
+  BlueskyPostEmbed,
   BuildEnvironment,
   ButtonBase,
   LinkBase,
@@ -123,6 +124,7 @@ import {
   CodeFileTree,
   CodeMobileTreeDrawer,
   CodeViewer,
+  CopyToClipboardButton,
   CollapsibleSection,
   ColumnPicker,
   CompareComparisonGrid,
@@ -1027,6 +1029,8 @@ describe('component accessibility audits', () => {
       const component = await mountSuspended(PackageClaimPackageModal, {
         props: {
           packageName: 'test-package',
+          packageScope: undefined,
+          canPublishToScope: true,
           open: false,
         },
       })
@@ -1038,6 +1042,8 @@ describe('component accessibility audits', () => {
       const component = await mountSuspended(PackageClaimPackageModal, {
         props: {
           packageName: 'test-package',
+          packageScope: undefined,
+          canPublishToScope: true,
           open: true,
         },
       })
@@ -1894,6 +1900,26 @@ describe('component accessibility audits', () => {
     })
   })
 
+  describe('CopyToClipboardButton', () => {
+    it('should have no accessibility violations in default state', async () => {
+      const component = await mountSuspended(CopyToClipboardButton, {
+        props: { copied: false },
+        slots: { default: '<code>npm install vue</code>' },
+      })
+      const results = await runAxe(component)
+      expect(results.violations).toEqual([])
+    })
+
+    it('should have no accessibility violations in copied state', async () => {
+      const component = await mountSuspended(CopyToClipboardButton, {
+        props: { copied: true },
+        slots: { default: '<code>npm install vue</code>' },
+      })
+      const results = await runAxe(component)
+      expect(results.violations).toEqual([])
+    })
+  })
+
   describe('CollapsibleSection', () => {
     it('should have no accessibility violations', async () => {
       const component = await mountSuspended(CollapsibleSection, {
@@ -2460,6 +2486,18 @@ describe('component accessibility audits', () => {
           versions: mockVersions,
           distTags: mockDistTags,
           urlPattern: '/package/vue/v/{version}',
+        },
+      })
+      const results = await runAxe(component)
+      expect(results.violations).toEqual([])
+    })
+  })
+
+  describe('BlueskyPostEmbed', () => {
+    it('should have no accessibility violations in pending state', async () => {
+      const component = await mountSuspended(BlueskyPostEmbed, {
+        props: {
+          uri: 'at://did:plc:u5zp7npt5kpueado77kuihyz/app.bsky.feed.post/3mejzn5mrcc2g',
         },
       })
       const results = await runAxe(component)
